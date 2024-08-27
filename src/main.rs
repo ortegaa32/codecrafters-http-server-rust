@@ -22,6 +22,16 @@ fn main() {
     }
 }
 
+fn read_from_header(header: Vec<&str>, item: &str) -> Option<String> {
+    for h in header {
+        println!("{}", h);
+        if h.to_string().starts_with(item) {
+            return Some(h.replace(&format!("{item}: "), ""));
+        }
+    }
+    None
+}
+
 fn handle_connection(mut stream: TcpStream) -> Result<()> {
     let buf = BufReader::new(&mut stream);
 
@@ -32,14 +42,22 @@ fn handle_connection(mut stream: TcpStream) -> Result<()> {
 
     match status[0] {
         "GET" => {
-            if status[1] == "/" {
-                stream.write(b"HTTP/1.1 200 OK\r\n\r\n")?;
-            } else if status[1].starts_with("/echo/") {
-                let response = status[1].replace("/echo/", "");
-                stream.write(format!("HTTP/1.1 200 OK\r\nContent-type: text/plain\r\nContent-length: {}\r\n\r\n{}", response.len(), response).as_bytes())?;
-            } else {
-                stream.write(b"HTTP/1.1 404 Not Found\r\n\r\n")?;
-            }
+            let response: String = {
+                if status[1] == "/" {
+                    String::from("HTTP/1.1 200 OK\r\n\r\n")
+                } else if status[1].starts_with("/echo/") {
+                    let variable = status[1].replace("/echo/", "");
+                    format!("HTTP/1.1 200 OK\r\nContent-type: text/plain\r\nContent-length: {}\r\n\r\n{}", variable.len(), variable)
+                } else if status[1].starts_with("/user-agent") {
+                    let header: Vec<&str> = lines[0].split("\r\n").collect();
+                    match read_from_header(header, "User-Agent") {
+                        Some(agent) => format!("HTTP/1.1 200 OK\r\nContent-type: text/plain\r\nContent-length: {}\r\n\r\n{}", agent.len(), agent),
+                        None => String::from("")
+                    };
+                } else {
+                    String::from("HTTP/1.1 404 Not Found\r\n\r\n")
+            }};
+            let _ = stream.write_all(response.as_bytes());
         }
         _ => {
             println!("Unknown Method: {}", status[0])
